@@ -73,6 +73,10 @@ function viewsDir(wikiDir: string): string {
   return join(wikiDir, "views");
 }
 
+function cardsDir(wikiDir: string): string {
+  return join(wikiDir, "wiki");
+}
+
 function cardMutationKey(wikiDir: string, slug: string): string {
   return join(wikiDir, ".pi-wiki-locks", slug);
 }
@@ -104,8 +108,7 @@ function indexContent(): string {
 ~~~dataviewjs
 const base = dv.current().file.folder;
 dv.table(["title", "tags", "Modified"],
-  dv.pages('"' + base + '"')
-    .where(p => !p.file.path.includes("/archive/") && p.file.name !== "index" && p.file.name !== "handoff" && p.file.name !== "conventions")
+  dv.pages('"' + base + '/wiki"')
     .where(p => p.file.mtime >= dv.date("today") - dv.duration("30 days"))
     .sort(p => p.file.mtime, 'desc')
     .map(p => [p.title, p.tags, p.file.mtime])
@@ -116,8 +119,7 @@ dv.table(["title", "tags", "Modified"],
 
 ~~~dataviewjs
 const base = dv.current().file.folder;
-for (let group of dv.pages('"' + base + '"')
-    .where(p => !p.file.path.includes("/archive/") && p.file.name !== "index" && p.file.name !== "handoff" && p.file.name !== "conventions")
+for (let group of dv.pages('"' + base + '/wiki"')
     .groupBy(p => p.tags?.find(t => t.startsWith("knowledge/"))?.split("/")[1] ?? "uncategorized")) {
     dv.header(3, group.key);
     dv.table(["Card", "Status", "Modified"],
@@ -133,9 +135,8 @@ for (let group of dv.pages('"' + base + '"')
 
 ~~~dataviewjs
 const base = dv.current().file.folder;
-const allPaths = new Set(dv.pages('"' + base + '"').map(p => p.file.name).array());
-const broken = dv.pages('"' + base + '"')
-    .where(p => !p.file.path.includes("/archive/"))
+const allPaths = new Set(dv.pages('"' + base + '/wiki"').map(p => p.file.name).array());
+const broken = dv.pages('"' + base + '/wiki"')
     .flatMap(p => p.file.outlinks.array())
     .filter(link => !allPaths.has(link.path.split("/").pop()?.replace(".md","")));
 if (broken.length === 0) dv.paragraph("✅ No broken links.");
@@ -222,8 +223,7 @@ function byCategoryView(): string {
   return `// DataviewJS view: grouped by knowledge/* category
 // Usage: await dv.view(dv.current().file.folder + "/views/by-category")
 const base = dv.current().file.folder;
-for (let group of dv.pages('"' + base + '"')
-    .where(p => !p.file.path.includes("/archive/") && p.file.name !== "index" && p.file.name !== "handoff" && p.file.name !== "conventions")
+for (let group of dv.pages('"' + base + '/wiki"')
     .groupBy(p => p.tags?.find(t => t.startsWith("knowledge/"))?.split("/")[1] ?? "uncategorized")) {
     dv.header(3, group.key);
     dv.table(["Card", "Status", "Modified"],
@@ -244,6 +244,7 @@ async function ensureFile(path: string, content: string): Promise<void> {
 
 async function scaffoldWiki(wikiDir: string): Promise<void> {
   await mkdir(wikiDir, { recursive: true });
+  await mkdir(cardsDir(wikiDir), { recursive: true });
   await mkdir(archiveDir(wikiDir), { recursive: true });
   await mkdir(viewsDir(wikiDir), { recursive: true });
   await ensureFile(join(wikiDir, "index.md"), indexContent());
@@ -346,16 +347,17 @@ function buildFrontmatter(fields: {
 }
 
 async function listCardFiles(wikiDir: string): Promise<Array<{ slug: string; filePath: string }>> {
-  await mkdir(wikiDir, { recursive: true });
-  const entries = await readdir(wikiDir, { withFileTypes: true });
+  const dir = cardsDir(wikiDir);
+  await mkdir(dir, { recursive: true });
+  const entries = await readdir(dir, { withFileTypes: true });
   return entries
-    .filter((e) => e.isFile() && e.name.endsWith(".md") && !SPECIAL_FILES.has(e.name))
-    .map((e) => ({ slug: e.name.replace(/\.md$/, ""), filePath: join(wikiDir, e.name) }));
+    .filter((e) => e.isFile() && e.name.endsWith(".md"))
+    .map((e) => ({ slug: e.name.replace(/\.md$/, ""), filePath: join(dir, e.name) }));
 }
 
 async function findCardFile(wikiDir: string, slug: string): Promise<string | null> {
   if (!isValidSlug(slug)) return null;
-  const rootPath = join(wikiDir, `${slug}.md`);
+  const rootPath = join(cardsDir(wikiDir), `${slug}.md`);
   return existsSync(rootPath) ? rootPath : null;
 }
 
@@ -405,6 +407,20 @@ function buildAutoHandoff(prompts: string[], cwd: string): string {
   ].join("\n");
 }
 
+function extractUserPromptText(message: any): string {
+  if (!message || message.role !== "user") return "";
+  const content = message.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((part) => part?.type === "text" && typeof part.text === "string")
+      .map((part) => part.text)
+      .join("\n")
+      .trim();
+  }
+  return "";
+}
+
 let recallDone = false;
 let retroDone = false;
 let sessionPrompts: string[] = [];
@@ -445,22 +461,24 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("resources_discover", async () => ({ skillPaths: [SKILLS_DIR] }));
 
-  pi.on("session_start", async () => {
+  pi.on("session_start", async (_event, ctx) => {
     recallDone = false;
     retroDone = false;
-    sessionPrompts = [];
+    sessionPrompts = ctx.sessionManager
+      .getBranch()
+      .filter((entry: any) => entry.type === "message" && entry.message?.role === "user")
+      .map((entry: any) => summarizePrompt(extractUserPromptText(entry.message)))
+      .filter(Boolean);
+
+    try {
+      await persistAutoHandoff(ctx.cwd, false);
+    } catch {
+      // Never block session start on handoff regeneration.
+    }
   });
 
   pi.on("session_compact", async () => {
     recallDone = false;
-  });
-
-  pi.on("agent_end", async (_event, ctx) => {
-    try {
-      await persistAutoHandoff(ctx.cwd, false);
-    } catch {
-      // Never block normal agent completion on handoff persistence.
-    }
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
@@ -775,7 +793,7 @@ export default function (pi: ExtensionAPI) {
         };
       }
 
-      const defaultPath = join(config.wikiDir, `${params.slug}.md`);
+      const defaultPath = join(cardsDir(config.wikiDir), `${params.slug}.md`);
       const existingPath = await findCardFile(config.wikiDir, params.slug);
       const filePath = existingPath ?? defaultPath;
       const today = TODAY();

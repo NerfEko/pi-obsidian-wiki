@@ -66,12 +66,13 @@ The configured wiki path should point at the folder that will contain your agent
 ├── views/
 │   └── by-category.js
 ├── archive/          # Archived cards
-├── some-card.md
-├── another-card.md
-└── ...
+└── wiki/
+    ├── some-card.md
+    ├── another-card.md
+    └── ...
 ```
 
-When you run `/wiki path ...`, pi-wiki scaffolds these files and folders if they do not already exist. Cards themselves are stored flat in the wiki root; category is represented by tags, not folders.
+When you run `/wiki path ...`, pi-wiki scaffolds these files and folders if they do not already exist. Cards are stored flat in the `wiki/` subfolder; category is represented by tags, not folders.
 
 ## Tools
 
