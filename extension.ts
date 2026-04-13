@@ -101,46 +101,74 @@ function rgNoResults(err: any): boolean {
 function indexContent(): string {
   return `# Agent Wiki
 
-> [!info] This file is the agent's entry point. Cards auto-appear below via Dataview queries. Do not edit manually.
+> [!info] This is the agent's home page inside Obsidian. Cards live in the \`wiki/\` folder below and are organized by tags, not folders.
 
-## Recent Cards (last 30 days)
+## At a Glance
 
 ~~~dataviewjs
 const base = dv.current().file.folder;
-dv.table(["title", "tags", "Modified"],
+const pages = dv.pages('"' + base + '/wiki"');
+const total = pages.length;
+const active = pages.where(p => p.tags?.includes("status/active")).length;
+const draft = pages.where(p => p.tags?.includes("status/draft")).length;
+const recent = pages.where(p => p.file.mtime >= dv.date("today") - dv.duration("30 days")).length;
+dv.paragraph(`**${total}** cards total • **${active}** active • **${draft}** draft • **${recent}** updated in the last 30 days`);
+~~~
+
+## Recently Updated
+
+~~~dataviewjs
+const base = dv.current().file.folder;
+dv.table(["Card", "Status", "Tags", "Modified"],
   dv.pages('"' + base + '/wiki"')
-    .where(p => p.file.mtime >= dv.date("today") - dv.duration("30 days"))
     .sort(p => p.file.mtime, 'desc')
-    .map(p => [p.title, p.tags, p.file.mtime])
+    .limit(12)
+    .map(p => [
+      p.file.link,
+      p.tags?.find(t => t.startsWith("status/"))?.split("/")[1] ?? "—",
+      (p.tags ?? []).filter(t => !t.startsWith("status/")).join(", "),
+      p.file.mtime,
+    ])
 );
 ~~~
 
-## By Category
+## All Cards
 
 ~~~dataviewjs
 const base = dv.current().file.folder;
-for (let group of dv.pages('"' + base + '/wiki"')
-    .groupBy(p => p.tags?.find(t => t.startsWith("knowledge/"))?.split("/")[1] ?? "uncategorized")) {
-    dv.header(3, group.key);
-    dv.table(["Card", "Status", "Modified"],
-        group.rows.sort(p => p.file.mtime, 'desc')
-            .map(p => [p.file.link,
-                       p.file.tags?.find(t => t.startsWith("status/"))?.split("/")[1],
-                       p.file.mday])
-    );
-}
+dv.table(["Card", "Status", "Tags", "Modified"],
+  dv.pages('"' + base + '/wiki"')
+    .sort(p => p.title ?? p.file.name, 'asc')
+    .map(p => [
+      p.file.link,
+      p.tags?.find(t => t.startsWith("status/"))?.split("/")[1] ?? "—",
+      (p.tags ?? []).filter(t => !t.startsWith("status/")).join(", "),
+      p.file.mtime,
+    ])
+);
 ~~~
 
-## Orphan Links (unresolved wikilinks)
+## Unresolved Links
 
 ~~~dataviewjs
 const base = dv.current().file.folder;
 const allPaths = new Set(dv.pages('"' + base + '/wiki"').map(p => p.file.name).array());
 const broken = dv.pages('"' + base + '/wiki"')
     .flatMap(p => p.file.outlinks.array())
-    .filter(link => !allPaths.has(link.path.split("/").pop()?.replace(".md","")));
+    .filter(link => !allPaths.has(link.path.split("/").pop()?.replace(".md", "")));
 if (broken.length === 0) dv.paragraph("✅ No broken links.");
 else dv.list([...new Set(broken.map(l => l.display ?? l.path))]);
+~~~
+
+## Isolated Cards
+
+~~~dataviewjs
+const base = dv.current().file.folder;
+const isolated = dv.pages('"' + base + '/wiki"')
+  .where(p => (p.file.inlinks?.length ?? 0) === 0)
+  .sort(p => p.file.name, 'asc');
+if (isolated.length === 0) dv.paragraph("✅ Every card has at least one inbound link.");
+else dv.list(isolated.map(p => p.file.link));
 ~~~
 `;
 }
@@ -220,19 +248,19 @@ function conventionsContent(): string {
 }
 
 function byCategoryView(): string {
-  return `// DataviewJS view: grouped by knowledge/* category
+  return `// DataviewJS helper: flat card table for the current agent wiki
 // Usage: await dv.view(dv.current().file.folder + "/views/by-category")
 const base = dv.current().file.folder;
-for (let group of dv.pages('"' + base + '/wiki"')
-    .groupBy(p => p.tags?.find(t => t.startsWith("knowledge/"))?.split("/")[1] ?? "uncategorized")) {
-    dv.header(3, group.key);
-    dv.table(["Card", "Status", "Modified"],
-        group.rows.sort(p => p.file.mtime, 'desc')
-            .map(p => [p.file.link,
-                       p.file.tags?.find(t => t.startsWith("status/"))?.split("/")[1],
-                       p.file.mday])
-    );
-}
+dv.table(["Card", "Status", "Tags", "Modified"],
+  dv.pages('"' + base + '/wiki"')
+    .sort(p => p.title ?? p.file.name, 'asc')
+    .map(p => [
+      p.file.link,
+      p.tags?.find(t => t.startsWith("status/"))?.split("/")[1] ?? "—",
+      (p.tags ?? []).filter(t => !t.startsWith("status/")).join(", "),
+      p.file.mtime,
+    ])
+);
 `;
 }
 
