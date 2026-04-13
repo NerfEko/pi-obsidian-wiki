@@ -636,7 +636,7 @@ export default function (pi: ExtensionAPI) {
     name: "wiki_read",
     label: "Wiki Read",
     description:
-      'Read a single wiki card by slug. Use slug "conventions" to read the card schema reference.'
+      'Read a single wiki card by slug. Use slug "conventions" to read the card schema reference.',
     parameters: Type.Object({
       slug: Type.String({ description: 'Kebab-case slug, or "conventions"' }),
     }),
