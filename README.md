@@ -1,4 +1,4 @@
-# pi-wiki
+# pi-obsidian-wiki
 
 An Obsidian-native long-term memory extension for the [Pi coding agent](https://github.com/mariozechner/pi-coding-agent). Replaces `@touchskyer/memex` with a system that writes knowledge cards directly into your Obsidian vault — exploiting Obsidian's full feature set (Dataview, wikilinks, backlinks, graph view, callouts, hierarchical tags, aliases).
 
