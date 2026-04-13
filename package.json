@@ -1,0 +1,28 @@
+{
+  "name": "pi-obsidian-wiki",
+  "version": "0.1.0",
+  "description": "Pi extension that uses an Obsidian vault as a wiki-backed long-term memory system.",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "obsidian",
+    "wiki",
+    "memory"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NerfEko/pi-obsidian-wiki.git"
+  },
+  "pi": {
+    "extensions": [
+      "./extension.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
+  }
+}
