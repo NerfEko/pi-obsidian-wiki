@@ -41,10 +41,17 @@ The extension stores its config in `~/.pi/agent/pi-wiki.json`.
 
 ### Development / local install
 
-If you are working on the package locally, Pi also supports local package paths:
+If you are working on the package locally, Pi also supports local package paths.
+From inside the cloned repo:
 
 ```bash
-pi install /absolute/path/to/pi-obsidian-wiki
+pi install .
+```
+
+Or from anywhere else:
+
+```bash
+pi install /absolute/path/to/your-clone-dir
 ```
 
 ## Wiki folder layout
