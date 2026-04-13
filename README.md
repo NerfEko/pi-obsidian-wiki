@@ -86,7 +86,7 @@ When you run `/wiki path ...`, pi-obsidian-wiki scaffolds these files and folder
 ## Tools
 
 ### `wiki_recall`
-Load the full card catalog, or a filtered subset with a query.
+Refresh the card catalog when the injected system-prompt wiki memory is missing, stale after compaction, or too broad and you want a filtered subset.
 
 ```text
 wiki_recall {}
@@ -195,6 +195,13 @@ Each injected card includes:
 - category
 - title
 - the `> [!summary]` line
+
+That means agents should normally **use the injected wiki memory by default** and should **not** call `wiki_recall` at the start of every task.
+
+Use `wiki_recall` only when:
+- compaction or a session reset likely dropped the injected wiki context
+- you want a fresh tool-backed catalog response
+- you need a filtered catalog for a narrow topic
 
 It does **not** inject full card bodies. Full content stays available on demand through `wiki_read`.
 

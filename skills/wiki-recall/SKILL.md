@@ -1,6 +1,6 @@
 ---
 name: wiki-recall
-description: Load prior knowledge from the Obsidian wiki at the start of a task. Call wiki_recall to get the full card catalog, then wiki_read <slug> for relevant cards. Use when project-specific memory may matter.
+description: Refresh wiki memory after compaction or when the injected system-prompt catalog is missing or insufficient. Use wiki_recall for a fresh or filtered catalog, then wiki_read <slug> for relevant full cards.
 ---
 
 # wiki-recall skill
@@ -9,10 +9,11 @@ Use this skill to load relevant prior knowledge from the Obsidian wiki.
 
 ## Protocol
 
-1. **Call `wiki_recall`** (no args) → receive the full catalog (slug | title | category | modified).
-2. **Read relevant cards**: For each slug that looks relevant to the current task, call `wiki_read <slug>`.
-3. **First task in a new project?** Call `wiki_read conventions` to load the card schema and tag taxonomy.
-4. **Follow wikilinks**: When a card body contains `[[slug]]` or `[[slug|text]]` links that are relevant, call `wiki_read <slug>` on the linked slug.
+1. **Assume the wiki catalog is already injected** into the system prompt on normal session start. Do **not** call `wiki_recall` automatically unless you need a refresh.
+2. **Call `wiki_recall`** when compaction happened, when wiki context appears missing, or when you need a fresh/filtered tool result.
+3. **Read relevant cards**: For each slug that looks relevant to the current task, call `wiki_read <slug>`.
+4. **Load conventions only when needed**: Call `wiki_read conventions` if the task is about wiki schema, card-writing rules, or vault structure.
+5. **Follow wikilinks**: When a card body contains `[[slug]]` or `[[slug|text]]` links that are relevant, call `wiki_read <slug>` on the linked slug.
 
 ## Guardrails
 
@@ -22,7 +23,7 @@ Use this skill to load relevant prior knowledge from the Obsidian wiki.
 
 ## Filtered recall (with query)
 
-If the task has a specific theme (e.g. "quickshell", "AUR", "bluetooth"), call:
+If the task has a specific theme (e.g. "quickshell", "AUR", "bluetooth") and the injected catalog is not enough, call:
 
 ```
 wiki_recall { query: "quickshell" }
@@ -39,7 +40,8 @@ This uses ripgrep to narrow results before loading full cards.
 ## Example flow
 
 ```
-1. wiki_recall
-2. wiki_read quickshell-state-stratification
-3. wiki_read quickshell-panel-under-bar-button
+1. notice compaction happened / wiki context is missing
+2. wiki_recall
+3. wiki_read quickshell-state-stratification
+4. wiki_read quickshell-panel-under-bar-button
 ```
