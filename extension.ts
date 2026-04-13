@@ -112,7 +112,7 @@ const total = pages.length;
 const active = pages.where(p => p.tags?.includes("status/active")).length;
 const draft = pages.where(p => p.tags?.includes("status/draft")).length;
 const recent = pages.where(p => p.file.mtime >= dv.date("today") - dv.duration("30 days")).length;
-dv.paragraph(`**${total}** cards total • **${active}** active • **${draft}** draft • **${recent}** updated in the last 30 days`);
+dv.paragraph("**" + total + "** cards total • **" + active + "** active • **" + draft + "** draft • **" + recent + "** updated in the last 30 days");
 ~~~
 
 ## Recently Updated
