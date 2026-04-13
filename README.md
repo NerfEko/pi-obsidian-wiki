@@ -6,10 +6,10 @@ This project was inspired by memex, but takes a more Obsidian-native approach: c
 
 ## What it does
 
-- injects a compact wiki index into the first turn of each session
+- injects compact wiki memory into the first turn of each session, including concept-map highlights and card summaries
 - lets the agent read, write, search, archive, and audit wiki cards
 - stores active cards under `wiki/`
-- keeps supporting files (`index.md`, `conventions.md`, `archive/`, `views/`) at the wiki root
+- keeps supporting files (`index.md`, `memory-map.md`, `conventions.md`, `archive/`, `views/`) at the wiki root
 - can optionally auto-commit and push wiki changes if the configured wiki path lives inside a git repo
 
 ## Install
@@ -62,6 +62,7 @@ The configured wiki path should point at the folder that will contain your agent
 ```text
 /path/to/your-agent-wiki/
 ├── index.md          # Obsidian home/dashboard for the wiki
+├── memory-map.md     # Generated concept map for agent/human navigation
 ├── conventions.md    # Card schema and tag rules
 ├── views/
 │   └── card-table.js # Reusable DataviewJS helper
@@ -88,16 +89,26 @@ When you run `/wiki path ...`, pi-obsidian-wiki scaffolds these files and folder
 ### `wiki_recall`
 Use the injected wiki memory by default on normal session start. Call `wiki_recall` only when the injected system-prompt wiki memory is missing, stale after compaction, or too broad and you want a filtered subset.
 
+By default it returns a **refresh packet** with:
+- concept map clusters
+- recently updated cards
+- link hubs
+- suggested next `wiki_read` calls
+
+Pass `view: "catalog"` if you want the raw inventory table instead.
+
 ```text
 wiki_recall {}
 wiki_recall { query: "quickshell" }
+wiki_recall { view: "catalog" }
 ```
 
 ### `wiki_read`
-Read a specific card by slug, or `conventions`.
+Read a specific card by slug, or the special root notes `conventions`, `index`, and `memory-map`.
 
 ```text
 wiki_read { slug: "quickshell-state-stratification" }
+wiki_read { slug: "memory-map" }
 wiki_read { slug: "conventions" }
 ```
 
@@ -193,8 +204,11 @@ On the first turn of a session, the extension injects a compact wiki memory bloc
 That injected block starts with a short workflow preamble telling the agent to:
 - use the injected wiki summaries as the default memory source for the session
 - open relevant cards in full with `wiki_read`
+- use `wiki_read { slug: "memory-map" }` if a higher-level concept map is needed before drilling into individual cards
 - use `wiki_recall` only when wiki context seems missing after compaction/reset or when a filtered subset is needed
 - consider `wiki_write` / `/skill:wiki-retro` at the end if the task produced a reusable insight
+
+It also injects a **Concept Map Highlights** section before the full card summary list so the agent sees grouped topic clusters, not just a flat catalog.
 
 Each injected card summary includes:
 - slug

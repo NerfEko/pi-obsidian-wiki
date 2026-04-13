@@ -12,12 +12,18 @@ import { homedir } from "node:os";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { withFileMutationQueue } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import {
+  buildCatalog,
+  buildInjectionBlock,
+  buildMemoryMapMarkdown,
+  buildRefreshPacket,
+  createCardRecord,
+} from "./lib/wiki-memory.mjs";
 
 const DEFAULT_WIKI_DIR = resolve(homedir(), "Documents/obsidian/EKoCodes/agent-wiki");
 const CONFIG_PATH = resolve(homedir(), ".pi/agent/pi-wiki.json");
 const SKILLS_DIR = resolve(__dirname, "skills");
 const TODAY = () => new Date().toISOString().slice(0, 10);
-const SPECIAL_FILES = new Set(["index.md", "conventions.md"]);
 const CATEGORY_DIRS = [
   "architecture",
   "backend",
@@ -102,6 +108,11 @@ function indexContent(): string {
   return `# Agent Wiki
 
 > [!info] This is the agent's home page inside Obsidian. Cards live in the \`wiki/\` folder below and are organized by tags, not folders.
+
+## Conceptual Entry Points
+
+- [[memory-map]] — agent-friendly concept map grouped by domain, with recent updates and link hubs.
+- [[conventions]] — schema, tag taxonomy, and card-writing rules.
 
 ## At a Glance
 
@@ -252,6 +263,18 @@ async function ensureFile(path: string, content: string): Promise<void> {
   }
 }
 
+async function writeIfChanged(path: string, content: string): Promise<void> {
+  if (existsSync(path)) {
+    try {
+      const existing = await readFile(path, "utf-8");
+      if (existing === content) return;
+    } catch {
+      // fall through to rewrite unreadable files
+    }
+  }
+  await writeFile(path, content, "utf-8");
+}
+
 async function scaffoldWiki(wikiDir: string): Promise<void> {
   await mkdir(wikiDir, { recursive: true });
   await mkdir(cardsDir(wikiDir), { recursive: true });
@@ -260,6 +283,7 @@ async function scaffoldWiki(wikiDir: string): Promise<void> {
   await ensureFile(join(wikiDir, "index.md"), indexContent());
   await ensureFile(join(wikiDir, "conventions.md"), conventionsContent());
   await ensureFile(join(viewsDir(wikiDir), "card-table.js"), cardTableView());
+  await syncMemoryMap(wikiDir);
 }
 
 function parseFrontmatter(text: string): {
@@ -370,15 +394,28 @@ async function findCardFile(wikiDir: string, slug: string): Promise<string | nul
   return existsSync(rootPath) ? rootPath : null;
 }
 
-function summarizeCard(slug: string, meta: Record<string, string | string[]>): string {
-  const title = (meta["title"] as string) ?? slug;
-  const tags = (meta["tags"] as string[]) ?? [];
-  const category =
-    tags.find((t) => t.startsWith("knowledge/"))?.split("/")[1] ??
-    (meta["category"] as string) ??
-    "—";
-  const modified = (meta["modified"] as string) ?? (meta["created"] as string) ?? "—";
-  return `${slug.padEnd(52)} | ${title.slice(0, 52).padEnd(52)} | ${category.padEnd(16)} | ${modified}`;
+async function loadWikiCards(wikiDir: string, files?: Array<{ slug: string; filePath: string }>) {
+  const selectedFiles = files ?? (await listCardFiles(wikiDir));
+  const cards: Array<ReturnType<typeof createCardRecord>> = [];
+
+  for (const { slug, filePath } of selectedFiles) {
+    try {
+      const text = await readFile(filePath, "utf-8");
+      const { meta, body } = parseFrontmatter(text);
+      cards.push(createCardRecord(slug, meta, body));
+    } catch {
+      // skip unreadable card
+    }
+  }
+
+  return cards;
+}
+
+async function syncMemoryMap(wikiDir: string, cards?: Array<ReturnType<typeof createCardRecord>>) {
+  const currentCards = cards ?? (await loadWikiCards(wikiDir));
+  const filePath = join(wikiDir, "memory-map.md");
+  await writeIfChanged(filePath, buildMemoryMapMarkdown(currentCards));
+  return filePath;
 }
 
 let recallDone = false;
@@ -388,7 +425,7 @@ let retroReminderQueued = false;
 export default function (pi: ExtensionAPI) {
   async function maybeGitPush(
     config: WikiConfig,
-    filePath: string,
+    filePaths: string | string[],
     message: string
   ): Promise<string | null> {
     if (!config.autoGitPush) return null;
@@ -396,7 +433,10 @@ export default function (pi: ExtensionAPI) {
       const result = await pi.exec("git", ["-C", config.wikiDir, "rev-parse", "--show-toplevel"]);
       const gitRoot = result.stdout.trim();
       if (!gitRoot) return "git push skipped: wiki path is not inside a git repo.";
-      await pi.exec("git", ["-C", gitRoot, "add", filePath]);
+      const paths = Array.from(new Set((Array.isArray(filePaths) ? filePaths : [filePaths]).filter(Boolean)));
+      await pi.exec("git", ["-C", gitRoot, "add", ...paths]);
+      const staged = await pi.exec("git", ["-C", gitRoot, "diff", "--cached", "--name-only", "--", ...paths]);
+      if (!staged.stdout.trim()) return null;
       await pi.exec("git", ["-C", gitRoot, "commit", "-m", message]);
       await pi.exec("git", ["-C", gitRoot, "push"]);
       return null;
@@ -426,41 +466,13 @@ export default function (pi: ExtensionAPI) {
       const config = await loadConfig();
       await mkdir(config.wikiDir, { recursive: true });
       const files = await listCardFiles(config.wikiDir);
-      const rows: string[] = [];
-
-      for (const { slug, filePath } of files) {
-        try {
-          const text = await readFile(filePath, "utf-8");
-          const { meta, body } = parseFrontmatter(text);
-          const tags = (meta["tags"] as string[]) ?? [];
-          const category =
-            tags.find((t) => t.startsWith("knowledge/"))?.split("/")[1] ??
-            (meta["category"] as string) ??
-            "—";
-          const title = (meta["title"] as string) ?? slug;
-          const summaryMatch = body.match(/^>\s*\[!summary\]\s*(.+)$/im);
-          const summary = summaryMatch ? summaryMatch[1].trim() : "";
-          rows.push(`- **${slug}** (${category}) — ${title}${summary ? `\n  > ${summary}` : ""}`);
-        } catch {
-          // skip unreadable card
-        }
-      }
-
-      const content = [
-        `## Wiki Memory (${files.length} cards)`,
-        "",
-        "Use the injected summaries below as the default memory source for this session.",
-        "- Open relevant cards in full with `wiki_read`.",
-        "- Use `wiki_recall` only if wiki memory seems missing after compaction/reset or you need a filtered subset.",
-        "- If this task produces a reusable insight, consider `wiki_write` or `/skill:wiki-retro` before finishing.",
-        "",
-        rows.length ? rows.join("\n") : "(no cards yet)",
-      ].join("\n");
+      const cards = await loadWikiCards(config.wikiDir, files);
+      const content = buildInjectionBlock(cards);
 
       recallDone = true;
       retroDone = false;
       retroReminderQueued = false;
-      ctx.ui.notify(`📚 Wiki loaded — ${files.length} cards`, "info");
+      ctx.ui.notify(`📚 Wiki loaded — ${cards.length} cards`, "info");
       return { systemPrompt: event.systemPrompt + "\n\n" + content };
     } catch (err: any) {
       recallDone = false;
@@ -609,9 +621,14 @@ export default function (pi: ExtensionAPI) {
     name: "wiki_recall",
     label: "Wiki Recall",
     description:
-      "Refresh prior knowledge from the Obsidian wiki when the injected system-prompt catalog is missing, stale after compaction, or too broad. No args: returns the full catalog (slug | title | category | modified). With query: returns matching cards only. Use injected wiki memory by default on normal session start.",
+      "Refresh prior knowledge from the Obsidian wiki when the injected system-prompt catalog is missing, stale after compaction, or too broad. Default view returns a high-signal refresh packet with concept map, recent cards, and suggested next reads. With query: returns matching cards in a summary-first format. Pass view=\"catalog\" for the raw inventory table. Use injected wiki memory by default on normal session start.",
     parameters: Type.Object({
       query: Type.Optional(Type.String({ description: "Optional search query to filter cards" })),
+      view: Type.Optional(
+        Type.Union([Type.Literal("refresh"), Type.Literal("catalog")], {
+          description: 'Response shape: "refresh" (default) or "catalog" for the raw table view',
+        })
+      ),
     }),
     async execute(_id, params, signal) {
       recallDone = true;
@@ -639,27 +656,27 @@ export default function (pi: ExtensionAPI) {
         files = await listCardFiles(config.wikiDir);
       }
 
-      if (files.length === 0) {
+      const cards = await loadWikiCards(config.wikiDir, files);
+      if (cards.length === 0) {
         return {
           content: [{ type: "text", text: params.query ? `No wiki cards matching "${params.query}".` : "Wiki is empty. No cards found." }],
         };
       }
 
-      const header = `${"SLUG".padEnd(52)} | ${"TITLE".padEnd(52)} | ${"CATEGORY".padEnd(16)} | MODIFIED`;
-      const divider = "-".repeat(header.length);
-      const rows: string[] = [header, divider];
-      for (const { slug, filePath } of files) {
-        try {
-          const text = await readFile(filePath, "utf-8");
-          const { meta } = parseFrontmatter(text);
-          rows.push(summarizeCard(slug, meta));
-        } catch {
-          rows.push(`${slug.padEnd(52)} | (unreadable)`);
-        }
-      }
-
       return {
-        content: [{ type: "text", text: `Wiki catalog (${files.length} cards):\n\n${rows.join("\n")}` }],
+        content: [
+          {
+            type: "text",
+            text:
+              params.view === "catalog"
+                ? `${
+                    params.query
+                      ? `Wiki catalog (${cards.length} matching cards for "${params.query}")`
+                      : `Wiki catalog (${cards.length} cards)`
+                  }:\n\n${buildCatalog(cards)}`
+                : buildRefreshPacket(cards, { query: params.query?.trim(), view: params.view ?? "refresh" }),
+          },
+        ],
       };
     },
   });
@@ -668,12 +685,12 @@ export default function (pi: ExtensionAPI) {
     name: "wiki_read",
     label: "Wiki Read",
     description:
-      'Read a single wiki card by slug. Use slug "conventions" to read the card schema reference.',
+      'Read a single wiki card by slug. Special root notes: "conventions", "index", and "memory-map".',
     parameters: Type.Object({
-      slug: Type.String({ description: 'Kebab-case slug, or "conventions"' }),
+      slug: Type.String({ description: 'Kebab-case slug, or one of: "conventions", "index", "memory-map"' }),
     }),
     async execute(_id, params) {
-      if (!isValidSlug(params.slug) && !["conventions", "index"].includes(params.slug)) {
+      if (!isValidSlug(params.slug) && !["conventions", "index", "memory-map"].includes(params.slug)) {
         return {
           content: [{ type: "text", text: `Invalid slug: ${params.slug}` }],
           isError: true,
@@ -684,7 +701,11 @@ export default function (pi: ExtensionAPI) {
       const specialFiles: Record<string, string> = {
         conventions: join(config.wikiDir, "conventions.md"),
         index: join(config.wikiDir, "index.md"),
+        "memory-map": join(config.wikiDir, "memory-map.md"),
       };
+      if (params.slug === "memory-map") {
+        await syncMemoryMap(config.wikiDir);
+      }
       const filePath = specialFiles[params.slug] ?? (await findCardFile(config.wikiDir, params.slug));
       if (!filePath) {
         const archivedPath = join(archiveDir(config.wikiDir), `${params.slug}.md`);
@@ -764,9 +785,10 @@ export default function (pi: ExtensionAPI) {
       await withFileMutationQueue(cardMutationKey(config.wikiDir, params.slug), async () => {
         await writeFile(filePath, content, "utf-8");
       });
+      const memoryMapPath = await syncMemoryMap(config.wikiDir);
       retroDone = true;
       retroReminderQueued = false;
-      const gitWarning = await maybeGitPush(config, filePath, `wiki: ${existingPath ? "update" : "add"} ${params.slug}`);
+      const gitWarning = await maybeGitPush(config, [filePath, memoryMapPath], `wiki: ${existingPath ? "update" : "add"} ${params.slug}`);
 
       return {
         content: [{ type: "text", text: `✅ Card written: ${params.slug}\n  Title: ${params.title}\n  Tags: ${allTags.join(", ")}\n  Path: ${filePath}${gitWarning ? `\n  Warning: ${gitWarning}` : ""}` }],
@@ -877,7 +899,8 @@ export default function (pi: ExtensionAPI) {
         }
         await writeFile(dst, `${updated}\n\n${body.trim()}\n`, "utf-8");
       });
-      const gitWarning = await maybeGitPush(config, dst, `wiki: archive ${params.slug}`);
+      const memoryMapPath = await syncMemoryMap(config.wikiDir);
+      const gitWarning = await maybeGitPush(config, [dst, memoryMapPath], `wiki: archive ${params.slug}`);
 
       return { content: [{ type: "text", text: `📦 Archived: ${params.slug} → archive/${params.slug}.md${gitWarning ? `\nWarning: ${gitWarning}` : ""}` }] };
     },

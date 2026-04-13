@@ -11,9 +11,10 @@ Use this skill to load relevant prior knowledge from the Obsidian wiki.
 
 1. **Use the injected wiki memory first** on normal session start. The system prompt already includes a workflow preamble plus compact card summaries, so treat that as the default memory source for the current session.
 2. **Open full cards with `wiki_read`** for the summaries that look relevant to the current task.
-3. **Call `wiki_recall` only as a refresh/drill-down tool** when compaction happened, when wiki context appears missing, or when you need a fresh/filtered tool result.
-4. **Load conventions only when needed**: Call `wiki_read conventions` if the task is about wiki schema, card-writing rules, or vault structure.
-5. **Follow wikilinks**: When a card body contains `[[slug]]` or `[[slug|text]]` links that are relevant, call `wiki_read <slug>` on the linked slug.
+3. **Use `wiki_read memory-map`** when you want the higher-level concept map before choosing individual cards.
+4. **Call `wiki_recall` only as a refresh/drill-down tool** when compaction happened, when wiki context appears missing, or when you need a fresh/filtered tool result.
+5. **Load conventions only when needed**: Call `wiki_read conventions` if the task is about wiki schema, card-writing rules, or vault structure.
+6. **Follow wikilinks**: When a card body contains `[[slug]]` or `[[slug|text]]` links that are relevant, call `wiki_read <slug>` on the linked slug.
 
 ## Guardrails
 
@@ -29,7 +30,13 @@ If the task has a specific theme (e.g. "quickshell", "AUR", "bluetooth") and the
 wiki_recall { query: "quickshell" }
 ```
 
-This uses ripgrep to narrow results before loading full cards.
+This uses ripgrep to narrow results before loading full cards and returns a summary-first match list.
+
+If you need the old raw table view instead of the refresh packet, call:
+
+```
+wiki_recall { view: "catalog" }
+```
 
 ## What to look for
 
@@ -42,9 +49,10 @@ This uses ripgrep to narrow results before loading full cards.
 ### Normal session start
 
 ```
-1. inspect the injected wiki summaries already in context
-2. wiki_read quickshell-state-stratification
-3. wiki_read quickshell-panel-under-bar-button
+1. inspect the injected wiki summaries and concept map highlights already in context
+2. wiki_read memory-map (optional, for the higher-level overview)
+3. wiki_read quickshell-state-stratification
+4. wiki_read quickshell-panel-under-bar-button
 ```
 
 ### After compaction / missing context
