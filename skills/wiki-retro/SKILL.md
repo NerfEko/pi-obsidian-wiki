@@ -5,11 +5,11 @@ description: Save non-obvious, reusable insights to the Obsidian wiki after comp
 
 # wiki-retro skill
 
-Use this skill at the end of a task to save non-obvious insights to the Obsidian wiki.
+Use this skill at the end of a task to save non-obvious insights to the Obsidian wiki. The extension may queue a hidden reminder on the next turn after meaningful work, but only reusable, non-obvious learnings should be written back.
 
 ## When to save a card
 
-Save a card when the session produced a **non-obvious, reusable insight** — something a future session would benefit from knowing. Do NOT save:
+Save a card when the session produced a **non-obvious, reusable insight** — something a future session would benefit from knowing. Treat any reminder as a prompt to evaluate whether the work generated lasting knowledge, not as a requirement to write a card every time. Do NOT save:
 - Trivial facts (e.g. "git status shows untracked files")
 - Ephemeral task outputs (file paths, raw command outputs)
 - One-off decisions that won't recur

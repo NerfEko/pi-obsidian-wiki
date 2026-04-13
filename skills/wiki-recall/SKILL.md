@@ -9,9 +9,9 @@ Use this skill to load relevant prior knowledge from the Obsidian wiki.
 
 ## Protocol
 
-1. **Assume the wiki catalog is already injected** into the system prompt on normal session start. Do **not** call `wiki_recall` automatically unless you need a refresh.
-2. **Call `wiki_recall`** when compaction happened, when wiki context appears missing, or when you need a fresh/filtered tool result.
-3. **Read relevant cards**: For each slug that looks relevant to the current task, call `wiki_read <slug>`.
+1. **Use the injected wiki memory first** on normal session start. The system prompt already includes a workflow preamble plus compact card summaries, so treat that as the default memory source for the current session.
+2. **Open full cards with `wiki_read`** for the summaries that look relevant to the current task.
+3. **Call `wiki_recall` only as a refresh/drill-down tool** when compaction happened, when wiki context appears missing, or when you need a fresh/filtered tool result.
 4. **Load conventions only when needed**: Call `wiki_read conventions` if the task is about wiki schema, card-writing rules, or vault structure.
 5. **Follow wikilinks**: When a card body contains `[[slug]]` or `[[slug|text]]` links that are relevant, call `wiki_read <slug>` on the linked slug.
 
@@ -37,7 +37,17 @@ This uses ripgrep to narrow results before loading full cards.
 - Cards whose title or slug mentions a tool, pattern, or system involved in the task.
 - Cards marked `status/draft` may be incomplete — verify before relying on them.
 
-## Example flow
+## Example flows
+
+### Normal session start
+
+```
+1. inspect the injected wiki summaries already in context
+2. wiki_read quickshell-state-stratification
+3. wiki_read quickshell-panel-under-bar-button
+```
+
+### After compaction / missing context
 
 ```
 1. notice compaction happened / wiki context is missing

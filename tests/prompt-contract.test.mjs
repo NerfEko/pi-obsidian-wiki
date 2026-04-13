@@ -1,0 +1,32 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const root = '/home/eko/projects/obsidian-wiki';
+const extension = readFileSync(resolve(root, 'extension.ts'), 'utf8');
+const readme = readFileSync(resolve(root, 'README.md'), 'utf8');
+const recallSkill = readFileSync(resolve(root, 'skills/wiki-recall/SKILL.md'), 'utf8');
+const retroSkill = readFileSync(resolve(root, 'skills/wiki-retro/SKILL.md'), 'utf8');
+
+test('injected wiki memory preamble keeps injected summaries as the default path', () => {
+  assert.match(extension, /Use the injected summaries below as the default memory source for this session\./);
+  assert.match(extension, /Open relevant cards in full with `wiki_read`\./);
+  assert.match(extension, /Use `wiki_recall` only if wiki memory seems missing after compaction\/reset or you need a filtered subset\./);
+});
+
+test('extension queues a selective retro reminder and clears it on wiki_write', () => {
+  assert.match(extension, /pi\.on\("agent_end", async \(\) => \{/);
+  assert.match(extension, /customType: "wiki-retro-reminder"/);
+  assert.match(extension, /retroReminderQueued = true;/);
+  assert.match(extension, /retroDone = true;/);
+  assert.match(extension, /retroReminderQueued = false;/);
+});
+
+test('docs and skills tell the same injected-memory-first story', () => {
+  assert.match(readme, /use the injected wiki summaries as the default memory source for the session/i);
+  assert.match(readme, /use `wiki_recall` only when wiki context seems missing after compaction\/reset or when a filtered subset is needed/i);
+  assert.match(recallSkill, /Use the injected wiki memory first/i);
+  assert.match(recallSkill, /Call `wiki_recall` only as a refresh\/drill-down tool/i);
+  assert.match(retroSkill, /only reusable, non-obvious learnings should be written back/i);
+});

@@ -382,6 +382,8 @@ function summarizeCard(slug: string, meta: Record<string, string | string[]>): s
 }
 
 let recallDone = false;
+let retroDone = false;
+let retroReminderQueued = false;
 
 export default function (pi: ExtensionAPI) {
   async function maybeGitPush(
@@ -407,10 +409,14 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async () => {
     recallDone = false;
+    retroDone = false;
+    retroReminderQueued = false;
   });
 
   pi.on("session_compact", async () => {
     recallDone = false;
+    retroDone = false;
+    retroReminderQueued = false;
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
@@ -443,16 +449,42 @@ export default function (pi: ExtensionAPI) {
       const content = [
         `## Wiki Memory (${files.length} cards)`,
         "",
+        "Use the injected summaries below as the default memory source for this session.",
+        "- Open relevant cards in full with `wiki_read`.",
+        "- Use `wiki_recall` only if wiki memory seems missing after compaction/reset or you need a filtered subset.",
+        "- If this task produces a reusable insight, consider `wiki_write` or `/skill:wiki-retro` before finishing.",
+        "",
         rows.length ? rows.join("\n") : "(no cards yet)",
       ].join("\n");
 
       recallDone = true;
+      retroDone = false;
+      retroReminderQueued = false;
       ctx.ui.notify(`📚 Wiki loaded — ${files.length} cards`, "info");
       return { systemPrompt: event.systemPrompt + "\n\n" + content };
     } catch (err: any) {
       recallDone = false;
+      retroDone = false;
+      retroReminderQueued = false;
       ctx.ui.notify(`Wiki failed to load: ${err.message}`, "error");
     }
+  });
+
+  pi.on("agent_end", async () => {
+    if (!recallDone || retroDone || retroReminderQueued) return;
+
+    retroReminderQueued = true;
+    pi.sendMessage(
+      {
+        customType: "wiki-retro-reminder",
+        content:
+          "**Wiki reminder:** If this task produced a non-obvious reusable insight, save it with `wiki_write` or follow `/skill:wiki-retro` before you move on.",
+        display: false,
+      },
+      {
+        deliverAs: "nextTurn",
+      }
+    );
   });
 
   pi.registerCommand("wiki", {
@@ -577,7 +609,7 @@ export default function (pi: ExtensionAPI) {
     name: "wiki_recall",
     label: "Wiki Recall",
     description:
-      "Load prior knowledge from the Obsidian wiki. No args: returns full catalog (slug | title | category | modified). With query: returns matching cards only. Call at the start of every task.",
+      "Refresh prior knowledge from the Obsidian wiki when the injected system-prompt catalog is missing, stale after compaction, or too broad. No args: returns the full catalog (slug | title | category | modified). With query: returns matching cards only. Use injected wiki memory by default on normal session start.",
     parameters: Type.Object({
       query: Type.Optional(Type.String({ description: "Optional search query to filter cards" })),
     }),
@@ -732,6 +764,8 @@ export default function (pi: ExtensionAPI) {
       await withFileMutationQueue(cardMutationKey(config.wikiDir, params.slug), async () => {
         await writeFile(filePath, content, "utf-8");
       });
+      retroDone = true;
+      retroReminderQueued = false;
       const gitWarning = await maybeGitPush(config, filePath, `wiki: ${existingPath ? "update" : "add"} ${params.slug}`);
 
       return {

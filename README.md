@@ -86,7 +86,7 @@ When you run `/wiki path ...`, pi-obsidian-wiki scaffolds these files and folder
 ## Tools
 
 ### `wiki_recall`
-Refresh the card catalog when the injected system-prompt wiki memory is missing, stale after compaction, or too broad and you want a filtered subset.
+Use the injected wiki memory by default on normal session start. Call `wiki_recall` only when the injected system-prompt wiki memory is missing, stale after compaction, or too broad and you want a filtered subset.
 
 ```text
 wiki_recall {}
@@ -102,7 +102,7 @@ wiki_read { slug: "conventions" }
 ```
 
 ### `wiki_write`
-Write or update a card with frontmatter, tags, and related links.
+Write or update a card with frontmatter, tags, and related links. Use it selectively when a task produced a non-obvious reusable insight worth keeping.
 
 ```text
 wiki_write {
@@ -188,9 +188,15 @@ Full explanation with [[wikilinks]] to related cards.
 
 ## Context loading
 
-On the first turn of a session, the extension injects a compact wiki index into the system prompt.
+On the first turn of a session, the extension injects a compact wiki memory block into the system prompt.
 
-Each injected card includes:
+That injected block starts with a short workflow preamble telling the agent to:
+- use the injected wiki summaries as the default memory source for the session
+- open relevant cards in full with `wiki_read`
+- use `wiki_recall` only when wiki context seems missing after compaction/reset or when a filtered subset is needed
+- consider `wiki_write` / `/skill:wiki-retro` at the end if the task produced a reusable insight
+
+Each injected card summary includes:
 - slug
 - category
 - title
@@ -204,6 +210,8 @@ Use `wiki_recall` only when:
 - you need a filtered catalog for a narrow topic
 
 It does **not** inject full card bodies. Full content stays available on demand through `wiki_read`.
+
+After a response, the extension may also queue a hidden next-turn reminder to use `wiki_write` when the task produced a non-obvious reusable insight. This reminder is intentionally selective and should not be treated as a requirement to write a card for every task.
 
 ## Project layout
 
