@@ -413,7 +413,7 @@ export default function (pi: ExtensionAPI) {
     recallDone = false;
   });
 
-  pi.on("before_agent_start", async (_event, ctx) => {
+  pi.on("before_agent_start", async (event, ctx) => {
     if (recallDone) return;
 
     try {
