@@ -78,7 +78,7 @@ When you run `/wiki path ...`, pi-wiki scaffolds these files and folders if they
 
 ### `wiki_recall`
 
-Load prior knowledge. Call at the start of every task.
+Load prior knowledge manually when you want a full catalog or a targeted refresh beyond the automatically injected session memory.
 
 ```
 wiki_recall {}                        # full catalog
@@ -130,7 +130,7 @@ wiki_archive { slug: "old-approach" }
 
 ### `wiki_handoff`
 
-Read or write session continuity.
+Read or write session continuity. In normal use, the extension rebuilds `handoff.md` automatically from saved session history when a session starts, so this tool is mainly for inspection or manual overrides.
 
 ```
 wiki_handoff { action: "read" }
@@ -221,9 +221,17 @@ Full explanation with [[wikilinks]] to related cards.
 
 | Event | Behavior |
 |-------|----------|
-| First turn of session | Silently injects wiki catalog summaries + `handoff.md` into the system prompt |
+| Session start | Rebuilds `handoff.md` from saved user prompts in the current Pi session history |
+| First turn of session | Silently injects wiki card summaries + `handoff.md` into the system prompt |
 | Session start / compact | Resets recall flag so wiki memory is injected again on the next first turn |
-| Wiki writes | Optionally auto-commit and push changes to the git repo containing the configured wiki path |
+| Wiki writes / archives / handoff writes | Optionally auto-commit and push changes to the git repo containing the configured wiki path |
+
+### Notes on context loading
+
+- The extension keeps a **compact wiki index** in context, not full card bodies.
+- Each injected card includes: **slug, category, title, and the `> [!summary]` line**.
+- Full card content is still available on demand through `wiki_read <slug>`.
+- `handoff.md` is no longer rewritten after every prompt.
 
 ## Project layout
 
