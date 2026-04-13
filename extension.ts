@@ -450,7 +450,6 @@ function extractUserPromptText(message: any): string {
 }
 
 let recallDone = false;
-let retroDone = false;
 let sessionPrompts: string[] = [];
 
 export default function (pi: ExtensionAPI) {
@@ -491,7 +490,6 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     recallDone = false;
-    retroDone = false;
     sessionPrompts = ctx.sessionManager
       .getBranch()
       .filter((entry: any) => entry.type === "message" && entry.message?.role === "user")
@@ -804,7 +802,6 @@ export default function (pi: ExtensionAPI) {
       source: Type.Optional(Type.String({ description: 'Source: "pi" (default) | "human" | URL' })),
     }),
     async execute(_id, params) {
-      retroDone = true;
       const config = await loadConfig();
       await scaffoldWiki(config.wikiDir);
 
