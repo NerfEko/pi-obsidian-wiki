@@ -17,7 +17,7 @@ const DEFAULT_WIKI_DIR = resolve(homedir(), "Documents/obsidian/EKoCodes/agent-w
 const CONFIG_PATH = resolve(homedir(), ".pi/agent/pi-wiki.json");
 const SKILLS_DIR = resolve(__dirname, "skills");
 const TODAY = () => new Date().toISOString().slice(0, 10);
-const SPECIAL_FILES = new Set(["index.md", "handoff.md", "conventions.md"]);
+const SPECIAL_FILES = new Set(["index.md", "conventions.md"]);
 const CATEGORY_DIRS = [
   "architecture",
   "backend",
@@ -173,24 +173,6 @@ else dv.list(isolated.map(p => p.file.link));
 `;
 }
 
-function handoffContent(): string {
-  return `# Session Handoff
-_Last updated: (never) by pi_
-
-## Completed This Session
-(no previous session)
-
-## In Progress / Deferred
-(nothing deferred)
-
-## Next Session
-(no next session planned)
-
-## Active Projects (for context)
-(no active projects recorded)
-`;
-}
-
 function conventionsContent(): string {
   return [
     "# Agent Wiki Conventions",
@@ -247,9 +229,9 @@ function conventionsContent(): string {
   ].join("\n");
 }
 
-function byCategoryView(): string {
+function cardTableView(): string {
   return `// DataviewJS helper: flat card table for the current agent wiki
-// Usage: await dv.view(dv.current().file.folder + "/views/by-category")
+// Usage: await dv.view(dv.current().file.folder + "/views/card-table")
 const base = dv.current().file.folder;
 dv.table(["Card", "Status", "Tags", "Modified"],
   dv.pages('"' + base + '/wiki"')
@@ -276,9 +258,8 @@ async function scaffoldWiki(wikiDir: string): Promise<void> {
   await mkdir(archiveDir(wikiDir), { recursive: true });
   await mkdir(viewsDir(wikiDir), { recursive: true });
   await ensureFile(join(wikiDir, "index.md"), indexContent());
-  await ensureFile(join(wikiDir, "handoff.md"), handoffContent());
   await ensureFile(join(wikiDir, "conventions.md"), conventionsContent());
-  await ensureFile(join(viewsDir(wikiDir), "by-category.js"), byCategoryView());
+  await ensureFile(join(viewsDir(wikiDir), "card-table.js"), cardTableView());
 }
 
 function parseFrontmatter(text: string): {
@@ -400,57 +381,7 @@ function summarizeCard(slug: string, meta: Record<string, string | string[]>): s
   return `${slug.padEnd(52)} | ${title.slice(0, 52).padEnd(52)} | ${category.padEnd(16)} | ${modified}`;
 }
 
-function summarizePrompt(prompt: string): string {
-  const oneLine = prompt.replace(/\s+/g, " ").trim();
-  if (oneLine.length <= 160) return oneLine;
-  return oneLine.slice(0, 157) + "...";
-}
-
-function buildAutoHandoff(prompts: string[], cwd: string): string {
-  const items = prompts.map(summarizePrompt).filter(Boolean);
-  const completed = items.slice(0, -1);
-  const current = items.at(-1);
-
-  return [
-    "# Session Handoff",
-    `_Last updated: ${TODAY()} by pi_`,
-    "",
-    "## Completed This Session",
-    ...(completed.length > 0 ? completed.map((p) => `- ${p}`) : ["- No completed prompts recorded."]),
-    "",
-    "## In Progress / Deferred",
-    ...(current ? [`- ${current}`] : ["- Nothing currently in progress."]),
-    "",
-    "## Next Session",
-    ...(current
-      ? [
-          `- Resume: ${current}`,
-          "- Use the injected wiki memory plus this handoff to continue from the last active request.",
-        ]
-      : ["- No next action recorded."]),
-    "",
-    "## Active Projects (for context)",
-    `- ${cwd}`,
-    "",
-  ].join("\n");
-}
-
-function extractUserPromptText(message: any): string {
-  if (!message || message.role !== "user") return "";
-  const content = message.content;
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .filter((part) => part?.type === "text" && typeof part.text === "string")
-      .map((part) => part.text)
-      .join("\n")
-      .trim();
-  }
-  return "";
-}
-
 let recallDone = false;
-let sessionPrompts: string[] = [];
 
 export default function (pi: ExtensionAPI) {
   async function maybeGitPush(
@@ -472,55 +403,17 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  async function persistAutoHandoff(cwd: string, push: boolean): Promise<void> {
-    if (sessionPrompts.length === 0) return;
-    const config = await loadConfig();
-    await scaffoldWiki(config.wikiDir);
-    const filePath = join(config.wikiDir, "handoff.md");
-    const content = buildAutoHandoff(sessionPrompts, cwd);
-    await withFileMutationQueue(filePath, async () => {
-      await writeFile(filePath, content, "utf-8");
-    });
-    if (push) {
-      await maybeGitPush(config, filePath, "wiki: update handoff");
-    }
-  }
-
   pi.on("resources_discover", async () => ({ skillPaths: [SKILLS_DIR] }));
 
-  pi.on("session_start", async (_event, ctx) => {
+  pi.on("session_start", async () => {
     recallDone = false;
-    sessionPrompts = ctx.sessionManager
-      .getBranch()
-      .filter((entry: any) => entry.type === "message" && entry.message?.role === "user")
-      .map((entry: any) => summarizePrompt(extractUserPromptText(entry.message)))
-      .filter(Boolean);
-
-    try {
-      await persistAutoHandoff(ctx.cwd, false);
-    } catch {
-      // Never block session start on handoff regeneration.
-    }
   });
 
   pi.on("session_compact", async () => {
     recallDone = false;
   });
 
-  pi.on("session_shutdown", async (_event, ctx) => {
-    try {
-      await persistAutoHandoff(ctx.cwd, true);
-    } catch {
-      // Never block shutdown on handoff persistence.
-    }
-  });
-
-  pi.on("before_agent_start", async (event, ctx) => {
-    const promptSummary = summarizePrompt(event.prompt ?? "");
-    if (promptSummary && sessionPrompts.at(-1) !== promptSummary) {
-      sessionPrompts.push(promptSummary);
-    }
-
+  pi.on("before_agent_start", async (_event, ctx) => {
     if (recallDone) return;
 
     try {
@@ -547,19 +440,10 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
-      const handoffPath = join(config.wikiDir, "handoff.md");
-      const handoff = existsSync(handoffPath)
-        ? await readFile(handoffPath, "utf-8")
-        : "No previous session handoff.";
-
       const content = [
         `## Wiki Memory (${files.length} cards)`,
         "",
         rows.length ? rows.join("\n") : "(no cards yet)",
-        "",
-        "## Previous Session",
-        "",
-        handoff.trim(),
       ].join("\n");
 
       recallDone = true;
@@ -752,12 +636,12 @@ export default function (pi: ExtensionAPI) {
     name: "wiki_read",
     label: "Wiki Read",
     description:
-      'Read a single wiki card by slug. Use slug "handoff" to read session continuity. Use slug "conventions" to read the card schema reference.',
+      'Read a single wiki card by slug. Use slug "conventions" to read the card schema reference.'
     parameters: Type.Object({
-      slug: Type.String({ description: 'Kebab-case slug, or "handoff" / "conventions"' }),
+      slug: Type.String({ description: 'Kebab-case slug, or "conventions"' }),
     }),
     async execute(_id, params) {
-      if (!isValidSlug(params.slug) && !["handoff", "conventions", "index"].includes(params.slug)) {
+      if (!isValidSlug(params.slug) && !["conventions", "index"].includes(params.slug)) {
         return {
           content: [{ type: "text", text: `Invalid slug: ${params.slug}` }],
           isError: true,
@@ -766,7 +650,6 @@ export default function (pi: ExtensionAPI) {
       const config = await loadConfig();
       await mkdir(config.wikiDir, { recursive: true });
       const specialFiles: Record<string, string> = {
-        handoff: join(config.wikiDir, "handoff.md"),
         conventions: join(config.wikiDir, "conventions.md"),
         index: join(config.wikiDir, "index.md"),
       };
@@ -963,41 +846,6 @@ export default function (pi: ExtensionAPI) {
       const gitWarning = await maybeGitPush(config, dst, `wiki: archive ${params.slug}`);
 
       return { content: [{ type: "text", text: `📦 Archived: ${params.slug} → archive/${params.slug}.md${gitWarning ? `\nWarning: ${gitWarning}` : ""}` }] };
-    },
-  });
-
-  pi.registerTool({
-    name: "wiki_handoff",
-    label: "Wiki Handoff",
-    description:
-      'Read or write the session handoff file (handoff.md). Use action "read" to load continuity context, "write" to record what was completed, deferred, and planned next.',
-    parameters: Type.Object({
-      action: Type.Union([Type.Literal("read"), Type.Literal("write")], { description: '"read" or "write"' }),
-      content: Type.Optional(Type.String({ description: 'For action "write": the full handoff markdown content. Use the template: ## Completed This Session / ## In Progress / ## Next Session / ## Active Projects' })),
-    }),
-    async execute(_id, params) {
-      const config = await loadConfig();
-      await mkdir(config.wikiDir, { recursive: true });
-      const filePath = join(config.wikiDir, "handoff.md");
-
-      if (params.action === "read") {
-        if (!existsSync(filePath)) {
-          return { content: [{ type: "text", text: "No handoff.md found — this appears to be a fresh session." }] };
-        }
-        return { content: [{ type: "text", text: await readFile(filePath, "utf-8") }] };
-      }
-
-      if (!params.content?.trim()) {
-        return { content: [{ type: "text", text: 'Error: content is required for action "write".' }], isError: true };
-      }
-
-      const header = `# Session Handoff\n_Last updated: ${TODAY()} by pi_\n\n`;
-      const body = params.content.trim().startsWith("#") ? params.content.trim() : header + params.content.trim();
-      await withFileMutationQueue(filePath, async () => {
-        await writeFile(filePath, body + "\n", "utf-8");
-      });
-      const gitWarning = await maybeGitPush(config, filePath, "wiki: update handoff");
-      return { content: [{ type: "text", text: `✅ handoff.md updated (${TODAY()})${gitWarning ? `\nWarning: ${gitWarning}` : ""}` }] };
     },
   });
 

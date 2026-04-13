@@ -1,11 +1,11 @@
 ---
 name: wiki-retro
-description: Save non-obvious, reusable insights to the Obsidian wiki after completing a task. Call wiki_write to create or update knowledge cards, then wiki_handoff with action write to record session continuity. Use at the end of any session that produced a new finding worth remembering.
+description: Save non-obvious, reusable insights to the Obsidian wiki after completing a task. Call wiki_write to create or update knowledge cards when a session produced a finding worth remembering.
 ---
 
 # wiki-retro skill
 
-Use this skill at the end of every task to save non-obvious insights to the Obsidian wiki and record session continuity.
+Use this skill at the end of a task to save non-obvious insights to the Obsidian wiki.
 
 ## When to save a card
 
@@ -20,12 +20,12 @@ Call `wiki_write` with:
 
 | Field | Guidance |
 |-------|---------|
-| `slug` | Kebab-case, descriptive, 3–6 words (e.g. `quickshell-popup-focus-pattern`) |
-| `title` | ≤60 chars, noun phrase, not a sentence (e.g. "Quickshell popup focus grab pattern") |
-| `body` | Start with `> [!summary] <one-line TL;DR>`. Then explain with full context. Use `[[wikilinks]]` to link related cards. Add `> [!tip]` or `> [!warning]` callouts as needed. |
+| `slug` | Kebab-case, descriptive, 3–6 words |
+| `title` | ≤60 chars, noun phrase, not a sentence |
+| `body` | Start with `> [!summary] <one-line TL;DR>`. Then explain with full context. Use `[[wikilinks]]` to link related cards. Add `> [!tip]` or `> [!warning]` as needed. |
 | `category` | One of: `architecture`, `devops`, `bugfix`, `frontend`, `tooling`, `desktop`, `networking`, `backend` |
-| `related` | Slugs of directly related cards (not just anything mentioned) |
-| `aliases` | Common abbreviations or alternate names (only if there are real alternatives) |
+| `related` | Slugs of directly related cards |
+| `aliases` | Common abbreviations or alternate names, only if there are real alternatives |
 
 ## Body template
 
@@ -39,24 +39,6 @@ Use `[[other-slug]]` to link to related cards. Be specific — explain *why* the
 > [!tip] Optional: how to apply this in practice.
 
 > [!warning] Optional: edge cases, gotchas, or conditions where this doesn't apply.
-```
-
-## Session handoff protocol
-
-After writing cards, call `wiki_handoff` with `action: "write"` and content following this template:
-
-```markdown
-## Completed This Session
-- Brief description of what was finished
-
-## In Progress / Deferred
-- Tasks that were started but not finished, with enough context to resume
-
-## Next Session
-- Concrete next actions, in priority order
-
-## Active Projects (for context)
-- Project: ~/projects/foo  — what it is and where things stand
 ```
 
 ## Example
