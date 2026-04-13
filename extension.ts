@@ -458,6 +458,20 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+  async function persistAutoHandoff(cwd: string, push: boolean): Promise<void> {
+    if (sessionPrompts.length === 0) return;
+    const config = await loadConfig();
+    await scaffoldWiki(config.wikiDir);
+    const filePath = join(config.wikiDir, "handoff.md");
+    const content = buildAutoHandoff(sessionPrompts, cwd);
+    await withFileMutationQueue(filePath, async () => {
+      await writeFile(filePath, content, "utf-8");
+    });
+    if (push) {
+      await maybeGitPush(config, filePath, "wiki: update handoff");
+    }
+  }
+
   pi.on("resources_discover", async () => ({ skillPaths: [SKILLS_DIR] }));
 
   pi.on("session_start", async () => {
@@ -470,17 +484,17 @@ export default function (pi: ExtensionAPI) {
     recallDone = false;
   });
 
-  pi.on("session_shutdown", async (_event, ctx) => {
-    if (sessionPrompts.length === 0) return;
+  pi.on("agent_end", async (_event, ctx) => {
     try {
-      const config = await loadConfig();
-      await scaffoldWiki(config.wikiDir);
-      const filePath = join(config.wikiDir, "handoff.md");
-      const content = buildAutoHandoff(sessionPrompts, ctx.cwd);
-      await withFileMutationQueue(filePath, async () => {
-        await writeFile(filePath, content, "utf-8");
-      });
-      await maybeGitPush(config, filePath, "wiki: update handoff");
+      await persistAutoHandoff(ctx.cwd, false);
+    } catch {
+      // Never block normal agent completion on handoff persistence.
+    }
+  });
+
+  pi.on("session_shutdown", async (_event, ctx) => {
+    try {
+      await persistAutoHandoff(ctx.cwd, true);
     } catch {
       // Never block shutdown on handoff persistence.
     }
