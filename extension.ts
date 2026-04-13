@@ -18,7 +18,6 @@ const CONFIG_PATH = resolve(homedir(), ".pi/agent/pi-wiki.json");
 const SKILLS_DIR = resolve(__dirname, "skills");
 const TODAY = () => new Date().toISOString().slice(0, 10);
 const SPECIAL_FILES = new Set(["index.md", "handoff.md", "conventions.md"]);
-const NON_CARD_DIRS = new Set(["archive", "views"]);
 const CATEGORY_DIRS = [
   "architecture",
   "backend",
@@ -247,9 +246,6 @@ async function scaffoldWiki(wikiDir: string): Promise<void> {
   await mkdir(wikiDir, { recursive: true });
   await mkdir(archiveDir(wikiDir), { recursive: true });
   await mkdir(viewsDir(wikiDir), { recursive: true });
-  for (const dir of CATEGORY_DIRS) {
-    await mkdir(join(wikiDir, dir), { recursive: true });
-  }
   await ensureFile(join(wikiDir, "index.md"), indexContent());
   await ensureFile(join(wikiDir, "handoff.md"), handoffContent());
   await ensureFile(join(wikiDir, "conventions.md"), conventionsContent());
@@ -351,41 +347,16 @@ function buildFrontmatter(fields: {
 
 async function listCardFiles(wikiDir: string): Promise<Array<{ slug: string; filePath: string }>> {
   await mkdir(wikiDir, { recursive: true });
-  const results: Array<{ slug: string; filePath: string }> = [];
   const entries = await readdir(wikiDir, { withFileTypes: true });
-
-  for (const e of entries) {
-    if (e.isFile() && e.name.endsWith(".md") && !SPECIAL_FILES.has(e.name)) {
-      results.push({ slug: e.name.replace(/\.md$/, ""), filePath: join(wikiDir, e.name) });
-    } else if (e.isDirectory() && !NON_CARD_DIRS.has(e.name)) {
-      const subEntries = await readdir(join(wikiDir, e.name), { withFileTypes: true });
-      for (const se of subEntries) {
-        if (se.isFile() && se.name.endsWith(".md")) {
-          results.push({
-            slug: se.name.replace(/\.md$/, ""),
-            filePath: join(wikiDir, e.name, se.name),
-          });
-        }
-      }
-    }
-  }
-
-  return results;
+  return entries
+    .filter((e) => e.isFile() && e.name.endsWith(".md") && !SPECIAL_FILES.has(e.name))
+    .map((e) => ({ slug: e.name.replace(/\.md$/, ""), filePath: join(wikiDir, e.name) }));
 }
 
 async function findCardFile(wikiDir: string, slug: string): Promise<string | null> {
   if (!isValidSlug(slug)) return null;
   const rootPath = join(wikiDir, `${slug}.md`);
-  if (existsSync(rootPath)) return rootPath;
-
-  const entries = await readdir(wikiDir, { withFileTypes: true });
-  for (const e of entries) {
-    if (e.isDirectory() && !NON_CARD_DIRS.has(e.name)) {
-      const subPath = join(wikiDir, e.name, `${slug}.md`);
-      if (existsSync(subPath)) return subPath;
-    }
-  }
-  return null;
+  return existsSync(rootPath) ? rootPath : null;
 }
 
 function summarizeCard(slug: string, meta: Record<string, string | string[]>): string {
@@ -804,9 +775,7 @@ export default function (pi: ExtensionAPI) {
         };
       }
 
-      const cardDir = join(config.wikiDir, params.category);
-      await mkdir(cardDir, { recursive: true });
-      const defaultPath = join(cardDir, `${params.slug}.md`);
+      const defaultPath = join(config.wikiDir, `${params.slug}.md`);
       const existingPath = await findCardFile(config.wikiDir, params.slug);
       const filePath = existingPath ?? defaultPath;
       const today = TODAY();

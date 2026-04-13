@@ -11,7 +11,7 @@ An Obsidian-native long-term memory extension for the [Pi coding agent](https://
 | Link graph | CLI stats | Live interactive graph view |
 | Backlinks | Manual | Auto-tracked from `related: ["[[slug]]"]` frontmatter |
 | Index | Agent-written flat table | Live Dataview queries (auto-updating) |
-| Categorization | `category:` field only | Hierarchical tags `#knowledge/architecture` |
+| Categorization | `category:` field only | Hierarchical tags `#knowledge/architecture` in a flat note folder |
 | Note structure | Raw markdown | Callouts (`> [!summary]`, `> [!tip]`, `> [!warning]`) |
 | Session continuity | None | `handoff.md` written each session |
 
@@ -66,17 +66,12 @@ The configured wiki path should point at the folder that will contain your agent
 ├── views/
 │   └── by-category.js
 ├── archive/          # Archived cards
-├── architecture/
-├── backend/
-├── bugfix/
-├── desktop/
-├── devops/
-├── frontend/
-├── networking/
-└── tooling/
+├── some-card.md
+├── another-card.md
+└── ...
 ```
 
-When you run `/wiki path ...`, pi-wiki scaffolds these files and folders if they do not already exist.
+When you run `/wiki path ...`, pi-wiki scaffolds these files and folders if they do not already exist. Cards themselves are stored flat in the wiki root; category is represented by tags, not folders.
 
 ## Tools
 
