@@ -20,6 +20,7 @@ test('injected wiki memory preamble keeps injected summaries as the default path
 test('extension queues a selective retro reminder and clears it on wiki_write', () => {
   assert.match(extension, /pi\.on\("agent_end", async \(\) => \{/);
   assert.match(extension, /customType: "wiki-retro-reminder"/);
+  assert.match(extension, /architecture decisions, prompt\/retrieval workflow improvements, non-obvious tool behavior, debugging root causes, and reusable implementation patterns/);
   assert.match(extension, /retroReminderQueued = true;/);
   assert.match(extension, /retroDone = true;/);
   assert.match(extension, /retroReminderQueued = false;/);
@@ -33,4 +34,6 @@ test('docs and skills tell the same injected-memory-first story', () => {
   assert.match(recallSkill, /`wiki_read memory-map`.*higher-level concept map/i);
   assert.match(recallSkill, /Call `wiki_recall` only as a refresh\/drill-down tool/i);
   assert.match(retroSkill, /only reusable, non-obvious learnings should be written back/i);
+  assert.match(retroSkill, /architecture or workflow decisions/i);
+  assert.match(retroSkill, /prompt\/retrieval behavior improvements/i);
 });

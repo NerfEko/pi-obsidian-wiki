@@ -490,7 +490,7 @@ export default function (pi: ExtensionAPI) {
       {
         customType: "wiki-retro-reminder",
         content:
-          "**Wiki reminder:** If this task produced a non-obvious reusable insight, save it with `wiki_write` or follow `/skill:wiki-retro` before you move on.",
+          "**Wiki reminder:** If this task produced a non-obvious reusable insight, save it with `wiki_write` or follow `/skill:wiki-retro` before you move on. Strong candidates include architecture decisions, prompt/retrieval workflow improvements, non-obvious tool behavior, debugging root causes, and reusable implementation patterns. Prefer saving one atomic insight over skipping durable learnings entirely.",
         display: false,
       },
       {

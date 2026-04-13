@@ -9,7 +9,16 @@ Use this skill at the end of a task to save non-obvious insights to the Obsidian
 
 ## When to save a card
 
-Save a card when the session produced a **non-obvious, reusable insight** — something a future session would benefit from knowing. Treat any reminder as a prompt to evaluate whether the work generated lasting knowledge, not as a requirement to write a card every time. Do NOT save:
+Save a card when the session produced a **non-obvious, reusable insight** — something a future session would benefit from knowing. Treat any reminder as a prompt to evaluate whether the work generated lasting knowledge, not as a requirement to write a card every time.
+
+Strong candidates include:
+- architecture or workflow decisions
+- prompt/retrieval behavior improvements
+- debugging root causes
+- non-obvious tool behavior
+- reusable implementation patterns
+
+Do NOT save:
 - Trivial facts (e.g. "git status shows untracked files")
 - Ephemeral task outputs (file paths, raw command outputs)
 - One-off decisions that won't recur
