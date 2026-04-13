@@ -399,8 +399,44 @@ function summarizeCard(slug: string, meta: Record<string, string | string[]>): s
   return `${slug.padEnd(52)} | ${title.slice(0, 52).padEnd(52)} | ${category.padEnd(16)} | ${modified}`;
 }
 
+function summarizePrompt(prompt: string): string {
+  const oneLine = prompt.replace(/\s+/g, " ").trim();
+  if (oneLine.length <= 160) return oneLine;
+  return oneLine.slice(0, 157) + "...";
+}
+
+function buildAutoHandoff(prompts: string[], cwd: string): string {
+  const items = prompts.map(summarizePrompt).filter(Boolean);
+  const completed = items.slice(0, -1);
+  const current = items.at(-1);
+
+  return [
+    "# Session Handoff",
+    `_Last updated: ${TODAY()} by pi_`,
+    "",
+    "## Completed This Session",
+    ...(completed.length > 0 ? completed.map((p) => `- ${p}`) : ["- No completed prompts recorded."]),
+    "",
+    "## In Progress / Deferred",
+    ...(current ? [`- ${current}`] : ["- Nothing currently in progress."]),
+    "",
+    "## Next Session",
+    ...(current
+      ? [
+          `- Resume: ${current}`,
+          "- Use the injected wiki memory plus this handoff to continue from the last active request.",
+        ]
+      : ["- No next action recorded."]),
+    "",
+    "## Active Projects (for context)",
+    `- ${cwd}`,
+    "",
+  ].join("\n");
+}
+
 let recallDone = false;
 let retroDone = false;
+let sessionPrompts: string[] = [];
 
 export default function (pi: ExtensionAPI) {
   async function maybeGitPush(
@@ -427,13 +463,35 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async () => {
     recallDone = false;
     retroDone = false;
+    sessionPrompts = [];
   });
 
   pi.on("session_compact", async () => {
     recallDone = false;
   });
 
+  pi.on("session_shutdown", async (_event, ctx) => {
+    if (sessionPrompts.length === 0) return;
+    try {
+      const config = await loadConfig();
+      await scaffoldWiki(config.wikiDir);
+      const filePath = join(config.wikiDir, "handoff.md");
+      const content = buildAutoHandoff(sessionPrompts, ctx.cwd);
+      await withFileMutationQueue(filePath, async () => {
+        await writeFile(filePath, content, "utf-8");
+      });
+      await maybeGitPush(config, filePath, "wiki: update handoff");
+    } catch {
+      // Never block shutdown on handoff persistence.
+    }
+  });
+
   pi.on("before_agent_start", async (event, ctx) => {
+    const promptSummary = summarizePrompt(event.prompt ?? "");
+    if (promptSummary && sessionPrompts.at(-1) !== promptSummary) {
+      sessionPrompts.push(promptSummary);
+    }
+
     if (recallDone) return;
 
     try {
