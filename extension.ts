@@ -29,6 +29,7 @@ const CATEGORY_DIRS = [
   "networking",
   "tooling",
 ] as const;
+const CATEGORY_SET = new Set<string>(CATEGORY_DIRS);
 
 type WikiConfig = {
   wikiDir: string;
@@ -73,25 +74,51 @@ function viewsDir(wikiDir: string): string {
   return join(wikiDir, "views");
 }
 
-function indexContent(folderName: string): string {
+function cardMutationKey(wikiDir: string, slug: string): string {
+  return join(wikiDir, ".pi-wiki-locks", slug);
+}
+
+function isValidSlug(slug: string): boolean {
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
+}
+
+function isValidCategory(category: string): boolean {
+  return CATEGORY_SET.has(category);
+}
+
+function yamlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function rgNoResults(err: any): boolean {
+  const text = [err?.message, err?.stderr, err?.stdout].filter(Boolean).join("\n");
+  return /exit code 1|code 1|returned non-zero exit status 1/i.test(text);
+}
+
+function indexContent(): string {
   return `# Agent Wiki
 
 > [!info] This file is the agent's entry point. Cards auto-appear below via Dataview queries. Do not edit manually.
 
 ## Recent Cards (last 30 days)
 
-~~~dataview
-TABLE title, tags, file.mtime AS "Modified"
-FROM "${folderName}" AND -"${folderName}/archive"
-WHERE file.mtime >= date(today) - dur(30 days)
-SORT file.mtime DESC
+~~~dataviewjs
+const base = dv.current().file.folder;
+dv.table(["title", "tags", "Modified"],
+  dv.pages('"' + base + '"')
+    .where(p => !p.file.path.includes("/archive/") && p.file.name !== "index" && p.file.name !== "handoff" && p.file.name !== "conventions")
+    .where(p => p.file.mtime >= dv.date("today") - dv.duration("30 days"))
+    .sort(p => p.file.mtime, 'desc')
+    .map(p => [p.title, p.tags, p.file.mtime])
+);
 ~~~
 
 ## By Category
 
 ~~~dataviewjs
-for (let group of dv.pages('"${folderName}"')
-    .where(p => !p.file.path.includes("/archive/"))
+const base = dv.current().file.folder;
+for (let group of dv.pages('"' + base + '"')
+    .where(p => !p.file.path.includes("/archive/") && p.file.name !== "index" && p.file.name !== "handoff" && p.file.name !== "conventions")
     .groupBy(p => p.tags?.find(t => t.startsWith("knowledge/"))?.split("/")[1] ?? "uncategorized")) {
     dv.header(3, group.key);
     dv.table(["Card", "Status", "Modified"],
@@ -106,8 +133,10 @@ for (let group of dv.pages('"${folderName}"')
 ## Orphan Links (unresolved wikilinks)
 
 ~~~dataviewjs
-const allPaths = new Set(dv.pages().map(p => p.file.name).array());
-const broken = dv.pages('"${folderName}"')
+const base = dv.current().file.folder;
+const allPaths = new Set(dv.pages('"' + base + '"').map(p => p.file.name).array());
+const broken = dv.pages('"' + base + '"')
+    .where(p => !p.file.path.includes("/archive/"))
     .flatMap(p => p.file.outlinks.array())
     .filter(link => !allPaths.has(link.path.split("/").pop()?.replace(".md","")));
 if (broken.length === 0) dv.paragraph("✅ No broken links.");
@@ -190,11 +219,12 @@ function conventionsContent(): string {
   ].join("\n");
 }
 
-function byCategoryView(folderName: string): string {
+function byCategoryView(): string {
   return `// DataviewJS view: grouped by knowledge/* category
-// Usage: await dv.view("${folderName}/views/by-category")
-for (let group of dv.pages('"${folderName}"')
-    .where(p => !p.file.path.includes("/archive/"))
+// Usage: await dv.view(dv.current().file.folder + "/views/by-category")
+const base = dv.current().file.folder;
+for (let group of dv.pages('"' + base + '"')
+    .where(p => !p.file.path.includes("/archive/") && p.file.name !== "index" && p.file.name !== "handoff" && p.file.name !== "conventions")
     .groupBy(p => p.tags?.find(t => t.startsWith("knowledge/"))?.split("/")[1] ?? "uncategorized")) {
     dv.header(3, group.key);
     dv.table(["Card", "Status", "Modified"],
@@ -220,11 +250,10 @@ async function scaffoldWiki(wikiDir: string): Promise<void> {
   for (const dir of CATEGORY_DIRS) {
     await mkdir(join(wikiDir, dir), { recursive: true });
   }
-  const folderName = basename(wikiDir);
-  await ensureFile(join(wikiDir, "index.md"), indexContent(folderName));
+  await ensureFile(join(wikiDir, "index.md"), indexContent());
   await ensureFile(join(wikiDir, "handoff.md"), handoffContent());
   await ensureFile(join(wikiDir, "conventions.md"), conventionsContent());
-  await ensureFile(join(viewsDir(wikiDir), "by-category.js"), byCategoryView(folderName));
+  await ensureFile(join(viewsDir(wikiDir), "by-category.js"), byCategoryView());
 }
 
 function parseFrontmatter(text: string): {
@@ -294,24 +323,24 @@ function buildFrontmatter(fields: {
   related?: string[];
 }): string {
   const lines = ["---"];
-  lines.push(`title: "${fields.title}"`);
+  lines.push(`title: ${yamlString(fields.title)}`);
   lines.push(`slug: ${fields.slug}`);
   if (fields.aliases && fields.aliases.length > 0) {
     lines.push("aliases:");
-    for (const a of fields.aliases) lines.push(`  - ${a}`);
+    for (const a of fields.aliases) lines.push(`  - ${yamlString(a)}`);
   } else {
     lines.push("aliases: []");
   }
   lines.push("tags:");
-  for (const t of fields.tags) lines.push(`  - ${t}`);
+  for (const t of fields.tags) lines.push(`  - ${yamlString(t)}`);
   lines.push(`created: ${fields.created}`);
   lines.push(`modified: ${fields.modified}`);
-  lines.push(`source: ${fields.source}`);
+  lines.push(`source: ${yamlString(fields.source)}`);
   if (fields.related && fields.related.length > 0) {
     lines.push("related:");
     for (const r of fields.related) {
       const clean = r.replace(/^"?\[?\[?/, "").replace(/\]?\]?"?$/, "");
-      lines.push(`  - "[[${clean}]]"`);
+      lines.push(`  - ${yamlString(`[[${clean}]]`)}`);
     }
   } else {
     lines.push("related: []");
@@ -345,6 +374,7 @@ async function listCardFiles(wikiDir: string): Promise<Array<{ slug: string; fil
 }
 
 async function findCardFile(wikiDir: string, slug: string): Promise<string | null> {
+  if (!isValidSlug(slug)) return null;
   const rootPath = join(wikiDir, `${slug}.md`);
   if (existsSync(rootPath)) return rootPath;
 
@@ -373,17 +403,22 @@ let recallDone = false;
 let retroDone = false;
 
 export default function (pi: ExtensionAPI) {
-  async function maybeGitPush(config: WikiConfig, filePath: string, message: string): Promise<void> {
-    if (!config.autoGitPush) return;
+  async function maybeGitPush(
+    config: WikiConfig,
+    filePath: string,
+    message: string
+  ): Promise<string | null> {
+    if (!config.autoGitPush) return null;
     try {
       const result = await pi.exec("git", ["-C", config.wikiDir, "rev-parse", "--show-toplevel"]);
       const gitRoot = result.stdout.trim();
-      if (!gitRoot) return;
+      if (!gitRoot) return "git push skipped: wiki path is not inside a git repo.";
       await pi.exec("git", ["-C", gitRoot, "add", filePath]);
       await pi.exec("git", ["-C", gitRoot, "commit", "-m", message]);
       await pi.exec("git", ["-C", gitRoot, "push"]);
-    } catch {
-      // Never block a successful wiki mutation on git issues.
+      return null;
+    } catch (err: any) {
+      return `git push failed: ${err?.message ?? "unknown error"}`;
     }
   }
 
@@ -400,7 +435,6 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (event, ctx) => {
     if (recallDone) return;
-    recallDone = true;
 
     try {
       const config = await loadConfig();
@@ -441,9 +475,11 @@ export default function (pi: ExtensionAPI) {
         handoff.trim(),
       ].join("\n");
 
+      recallDone = true;
       ctx.ui.notify(`📚 Wiki loaded — ${files.length} cards`, "info");
       return { systemPrompt: event.systemPrompt + "\n\n" + content };
     } catch (err: any) {
+      recallDone = false;
       ctx.ui.notify(`Wiki failed to load: ${err.message}`, "error");
     }
   });
@@ -461,9 +497,13 @@ export default function (pi: ExtensionAPI) {
           return;
         }
         const wikiDir = expandPath(rawPath);
-        await scaffoldWiki(wikiDir);
-        await saveConfig({ ...config, wikiDir });
-        ctx.ui.notify(`📚 Wiki path set to ${wikiDir}`, "success");
+        try {
+          await scaffoldWiki(wikiDir);
+          await saveConfig({ ...config, wikiDir });
+          ctx.ui.notify(`📚 Wiki path set to ${wikiDir}`, "success");
+        } catch (err: any) {
+          ctx.ui.notify(`Failed to set wiki path: ${err?.message ?? "unknown error"}`, "error");
+        }
         return;
       }
 
@@ -552,8 +592,12 @@ export default function (pi: ExtensionAPI) {
           lines.push(`  • ${slug}: ${(meta["title"] as string) ?? slug}`);
         }
         ctx.ui.notify(lines.join("\n"), "info");
-      } catch {
-        ctx.ui.notify(`No results for "${args}"`, "info");
+      } catch (err: any) {
+        if (rgNoResults(err)) {
+          ctx.ui.notify(`No results for "${args}"`, "info");
+        } else {
+          ctx.ui.notify(`Wiki search failed: ${err?.message ?? "unknown error"}`, "error");
+        }
       }
     },
   });
@@ -626,6 +670,12 @@ export default function (pi: ExtensionAPI) {
       slug: Type.String({ description: 'Kebab-case slug, or "handoff" / "conventions"' }),
     }),
     async execute(_id, params) {
+      if (!isValidSlug(params.slug) && !["handoff", "conventions", "index"].includes(params.slug)) {
+        return {
+          content: [{ type: "text", text: `Invalid slug: ${params.slug}` }],
+          isError: true,
+        };
+      }
       const config = await loadConfig();
       await mkdir(config.wikiDir, { recursive: true });
       const specialFiles: Record<string, string> = {
@@ -669,9 +719,15 @@ export default function (pi: ExtensionAPI) {
       const config = await loadConfig();
       await scaffoldWiki(config.wikiDir);
 
-      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(params.slug)) {
+      if (!isValidSlug(params.slug)) {
         return {
           content: [{ type: "text", text: `Error: slug "${params.slug}" is not valid kebab-case. Use only lowercase letters, digits, and hyphens.` }],
+          isError: true,
+        };
+      }
+      if (!isValidCategory(params.category)) {
+        return {
+          content: [{ type: "text", text: `Error: category "${params.category}" is invalid.` }],
           isError: true,
         };
       }
@@ -693,7 +749,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       const domainTag = `knowledge/${params.category}`;
-      const allTags = [domainTag, "status/active", ...(params.tags ?? [])];
+      const allTags = Array.from(new Set([domainTag, "status/active", ...(params.tags ?? [])]));
       const frontmatter = buildFrontmatter({
         title: params.title,
         slug: params.slug,
@@ -706,13 +762,13 @@ export default function (pi: ExtensionAPI) {
       });
       const content = `${frontmatter}\n\n${params.body.trim()}\n`;
 
-      await withFileMutationQueue(filePath, async () => {
+      await withFileMutationQueue(cardMutationKey(config.wikiDir, params.slug), async () => {
         await writeFile(filePath, content, "utf-8");
       });
-      await maybeGitPush(config, filePath, `wiki: ${existingPath ? "update" : "add"} ${params.slug}`);
+      const gitWarning = await maybeGitPush(config, filePath, `wiki: ${existingPath ? "update" : "add"} ${params.slug}`);
 
       return {
-        content: [{ type: "text", text: `✅ Card written: ${params.slug}\n  Title: ${params.title}\n  Tags: ${allTags.join(", ")}\n  Path: ${filePath}` }],
+        content: [{ type: "text", text: `✅ Card written: ${params.slug}\n  Title: ${params.title}\n  Tags: ${allTags.join(", ")}\n  Path: ${filePath}${gitWarning ? `\n  Warning: ${gitWarning}` : ""}` }],
       };
     },
   });
@@ -764,8 +820,14 @@ export default function (pi: ExtensionAPI) {
           out.push("");
         }
         return { content: [{ type: "text", text: out.join("\n") }] };
-      } catch {
-        return { content: [{ type: "text", text: `No results for "${params.query}".` }] };
+      } catch (err: any) {
+        if (rgNoResults(err)) {
+          return { content: [{ type: "text", text: `No results for "${params.query}".` }] };
+        }
+        return {
+          content: [{ type: "text", text: `Wiki search failed: ${err?.message ?? "unknown error"}` }],
+          isError: true,
+        };
       }
     },
   });
@@ -778,6 +840,9 @@ export default function (pi: ExtensionAPI) {
       slug: Type.String({ description: "Slug of the card to archive" }),
     }),
     async execute(_id, params) {
+      if (!isValidSlug(params.slug)) {
+        return { content: [{ type: "text", text: `Invalid slug: ${params.slug}` }], isError: true };
+      }
       const config = await loadConfig();
       const src = await findCardFile(config.wikiDir, params.slug);
       const dst = join(archiveDir(config.wikiDir), `${params.slug}.md`);
@@ -805,15 +870,15 @@ export default function (pi: ExtensionAPI) {
         related: meta["related"] as string[],
       });
 
-      if (src !== dst) {
-        await rename(src, dst);
-      }
-      await withFileMutationQueue(dst, async () => {
+      await withFileMutationQueue(cardMutationKey(config.wikiDir, params.slug), async () => {
+        if (src !== dst) {
+          await rename(src, dst);
+        }
         await writeFile(dst, `${updated}\n\n${body.trim()}\n`, "utf-8");
       });
-      await maybeGitPush(config, dst, `wiki: archive ${params.slug}`);
+      const gitWarning = await maybeGitPush(config, dst, `wiki: archive ${params.slug}`);
 
-      return { content: [{ type: "text", text: `📦 Archived: ${params.slug} → archive/${params.slug}.md` }] };
+      return { content: [{ type: "text", text: `📦 Archived: ${params.slug} → archive/${params.slug}.md${gitWarning ? `\nWarning: ${gitWarning}` : ""}` }] };
     },
   });
 
@@ -847,8 +912,8 @@ export default function (pi: ExtensionAPI) {
       await withFileMutationQueue(filePath, async () => {
         await writeFile(filePath, body + "\n", "utf-8");
       });
-      await maybeGitPush(config, filePath, "wiki: update handoff");
-      return { content: [{ type: "text", text: `✅ handoff.md updated (${TODAY()})` }] };
+      const gitWarning = await maybeGitPush(config, filePath, "wiki: update handoff");
+      return { content: [{ type: "text", text: `✅ handoff.md updated (${TODAY()})${gitWarning ? `\nWarning: ${gitWarning}` : ""}` }] };
     },
   });
 
