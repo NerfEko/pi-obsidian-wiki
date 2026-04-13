@@ -639,7 +639,7 @@ export default function (pi: ExtensionAPI) {
       }
       try {
         const config = await loadConfig();
-        const result = await pi.exec("rg", ["-i", "--max-count", "3", "-l", args.trim(), config.wikiDir]);
+        const result = await pi.exec("rg", ["-i", "--max-count", "3", "-l", args.trim(), cardsDir(config.wikiDir)]);
         const files = result.stdout.trim().split("\n").filter(Boolean);
         if (files.length === 0) {
           ctx.ui.notify(`No results for "${args}"`, "info");
@@ -681,7 +681,7 @@ export default function (pi: ExtensionAPI) {
         try {
           const result = await pi.exec(
             "rg",
-            ["-i", "--max-count", "3", "-l", params.query.trim(), config.wikiDir],
+            ["-i", "--max-count", "3", "-l", params.query.trim(), cardsDir(config.wikiDir)],
             { signal }
           );
           files = result.stdout
@@ -844,7 +844,7 @@ export default function (pi: ExtensionAPI) {
       try {
         const result = await pi.exec(
           "rg",
-          ["-i", "--max-count", "3", "-n", params.query, config.wikiDir, "--glob", "*.md", "--glob", "!archive/**"],
+          ["-i", "--max-count", "3", "-n", params.query, cardsDir(config.wikiDir), "--glob", "*.md"],
           { signal }
         );
         const lines = result.stdout.trim().split("\n").filter(Boolean);
